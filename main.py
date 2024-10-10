@@ -27,6 +27,16 @@ def truncate_all_numbers(line, decimal_precision):
     pattern = r'-?\d+\.\d+'
     return re.sub(pattern, truncate_match, line)
 
+def fix_latex_commands(line):
+    """Fix common LaTeX command errors."""
+    latex_fixes = {
+        '\\\\': '\\',
+        # Add more LaTeX fixes here if needed
+    }
+    for old, new in latex_fixes.items():
+        line = line.replace(old, new)
+    return line
+
 def process_point_name(X):
     """Process point name according to the specified rules."""
     import re
@@ -57,15 +67,18 @@ def process_point_definitions(lines):
     # Dictionary to keep track of point name occurrences
     point_names = {}
     
-    # List to store new point definitions and processed lines
+    # Lists to store different types of lines
+    header_lines = lines[:3]
     point_definitions = []
-    processed_lines = []
+    dot_lines = []
+    label_lines = []
+    other_lines = []
     
     # Regular expressions for matching dot and label lines
     dot_pattern = r'dot\(\(([-\d.]+),([-\d.]+)\),dotstyle\);'
     label_pattern = r'label\("\$(.+?)\$", \(([-\d.]+),([-\d.]+)\), NE\);'
     
-    i = 0
+    i = 3  # Start after header lines
     while i < len(lines):
         line = lines[i].strip()
         
@@ -77,7 +90,9 @@ def process_point_definitions(lines):
                 # Get coordinates and label text
                 A, B = dot_match.groups()
                 X = label_match.group(1)
-                C, D = label_match.groups()[1:]
+                
+                # Fix any LaTeX command errors in X
+                X = fix_latex_commands(X)
                 
                 # Process the point name
                 base_name = process_point_name(X)
@@ -94,21 +109,58 @@ def process_point_definitions(lines):
                 point_def = f"pair {point_name}=({A},{B});\n"
                 point_definitions.append(point_def)
                 
-                # Add modified dot and label lines
-                processed_lines.append(f"dot({point_name});\n")
-                processed_lines.append(f'label("${X}$", {point_name}, NE);\n')
+                # Add modified dot and label lines to their respective groups
+                dot_lines.append(f"dot({point_name});\n")
+                label_lines.append(f'label("${X}$", {point_name}, NE);\n')
                 
                 i += 2  # Skip the next line since we've processed it
                 continue
         
-        # For all other lines, keep them as is
-        processed_lines.append(lines[i])
+        # For all other lines, check if they're dot or label lines
+        if line.startswith('dot('):
+            dot_lines.append(lines[i])
+        elif line.startswith('label('):
+            # Fix any LaTeX commands in label lines
+            fixed_line = fix_latex_commands(lines[i])
+            label_lines.append(fixed_line)
+        else:
+            other_lines.append(lines[i])
         i += 1
     
-    # Combine everything: original lines up to line 3, point definitions, then processed lines
-    return lines[:3] + point_definitions + processed_lines[3:]
+    # Find the marker for dots and labels section
+    marker_index = -1
+    for i, line in enumerate(other_lines):
+        if '/* dots and labels */' in line:
+            marker_index = i
+            break
+    
+    # Construct final output
+    final_lines = []
+    final_lines.extend(header_lines)  # Add header lines
+    final_lines.extend(point_definitions)  # Add point definitions
+    
+    if marker_index != -1:
+        # Add lines up to marker
+        final_lines.extend(other_lines[:marker_index])
+        # Add marker line
+        final_lines.append(other_lines[marker_index])
+        # Add grouped dot and label lines
+        final_lines.extend(dot_lines)
+        final_lines.append('\n')  # Add spacing between groups
+        final_lines.extend(label_lines)
+        # Add remaining lines
+        final_lines.extend(other_lines[marker_index + 1:])
+    else:
+        # If no marker found, just add everything in order
+        final_lines.extend(other_lines)
+        final_lines.extend(dot_lines)
+        final_lines.append('\n')
+        final_lines.extend(label_lines)
+    
+    return final_lines
 
 def modify_file(input_filename, output_filename, decimal_precision=3):
+    """Main function to modify the file."""
     # Read the entire file
     with open(input_filename, 'r') as file:
         lines = file.readlines()
@@ -125,7 +177,7 @@ def modify_file(input_filename, output_filename, decimal_precision=3):
             end_idx = i
             break
 
-    # Extract and save the xmin line and pen definitions if they exist between start_idx and end_idx
+    # Extract and save the xmin line and pen definitions if they exist
     if start_idx != -1 and end_idx != -1:
         for i in range(start_idx, end_idx + 1):
             line = lines[i]
@@ -133,7 +185,7 @@ def modify_file(input_filename, output_filename, decimal_precision=3):
                 xmin_line = line
             elif 'pen ' in line and '= rgb(' in line:
                 pen_definitions_line = line
-                # Extract pen names and remove their references from all lines
+                # Extract pen names and remove their references
                 pen_names = extract_pen_names(line)
                 for pen_name in pen_names:
                     lines = remove_pen_references(lines, pen_name)
@@ -155,10 +207,9 @@ def modify_file(input_filename, output_filename, decimal_precision=3):
             filtered_lines.append(line)
     lines = filtered_lines
 
-    # Check and remove last two lines if they match the criteria
-    if len(lines) >= 1:
-        if lines[-1].strip().startswith('/*'):
-            lines = lines[:-1]
+    # Check and remove last line if it starts with /*
+    if len(lines) >= 1 and lines[-1].strip().startswith('/*'):
+        lines = lines[:-1]
 
     # Remove " * labelscalefactor" from all lines
     lines = [line.replace(' * labelscalefactor', '') for line in lines]
@@ -179,14 +230,13 @@ def modify_file(input_filename, output_filename, decimal_precision=3):
     for line in lines:
         processed_line = truncate_all_numbers(line, decimal_precision)
         processed_lines.append(processed_line)
-    lines = processed_lines
-
+    
     # Process point definitions and replacements
-    lines = process_point_definitions(lines)
+    final_lines = process_point_definitions(processed_lines)
 
     # Write the modified content to the output file
     with open(output_filename, 'w') as file:
-        file.writelines(lines)
+        file.writelines(final_lines)
 
 def extract_pen_names(line):
     """Extract all 6-letter lowercase pen names from a pen definition line."""
@@ -205,12 +255,13 @@ def remove_pen_references(lines, pen_name):
     return modified_lines
 
 # Example usage
-input_file = "geogebra-export.txt"
-output_file = "geogebra-export-modified.txt"
-decimal_precision = 3  # Default value, can be changed
+if __name__ == "__main__":
+    input_file = "geogebra-export.txt"
+    output_file = "geogebra-export-modified.txt"
+    decimal_precision = 3  # Default value, can be changed
 
-try:
-    modify_file(input_file, output_file, decimal_precision)
-    print(f"Successfully modified the file. Output saved to {output_file}")
-except Exception as e:
-    print(f"An error occurred: {e}")
+    try:
+        modify_file(input_file, output_file, decimal_precision)
+        print(f"Successfully modified the file. Output saved to {output_file}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
