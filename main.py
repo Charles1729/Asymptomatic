@@ -27,6 +27,87 @@ def truncate_all_numbers(line, decimal_precision):
     pattern = r'-?\d+\.\d+'
     return re.sub(pattern, truncate_match, line)
 
+def process_point_name(X):
+    """Process point name according to the specified rules."""
+    import re
+    
+    # Remove specific characters and apply rules in order
+    if X.isalnum():
+        return X
+    
+    # Remove underscores
+    X = X.replace('_', '')
+    
+    # Remove curly brackets
+    X = X.replace('{', '').replace('}', '')
+    
+    # Handle prime notation
+    if "'" in X:
+        X = X.replace("'", '') + 'p'
+    
+    # Remove any remaining non-alphanumeric characters
+    X = re.sub(r'[^a-zA-Z0-9]', '', X)
+    
+    return X
+
+def process_point_definitions(lines):
+    """Process dot/label pairs and create point definitions."""
+    import re
+    
+    # Dictionary to keep track of point name occurrences
+    point_names = {}
+    
+    # List to store new point definitions and processed lines
+    point_definitions = []
+    processed_lines = []
+    
+    # Regular expressions for matching dot and label lines
+    dot_pattern = r'dot\(\(([-\d.]+),([-\d.]+)\),dotstyle\);'
+    label_pattern = r'label\("\$(.+?)\$", \(([-\d.]+),([-\d.]+)\), NE\);'
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        
+        if i < len(lines) - 1:
+            dot_match = re.match(dot_pattern, line)
+            label_match = re.match(label_pattern, lines[i + 1].strip())
+            
+            if dot_match and label_match:
+                # Get coordinates and label text
+                A, B = dot_match.groups()
+                X = label_match.group(1)
+                C, D = label_match.groups()[1:]
+                
+                # Process the point name
+                base_name = process_point_name(X)
+                
+                # Handle duplicate names
+                if base_name in point_names:
+                    point_names[base_name] += 1
+                    point_name = f"{base_name}{point_names[base_name]}"
+                else:
+                    point_names[base_name] = 1
+                    point_name = base_name
+                
+                # Create point definition with original coordinates
+                point_def = f"pair {point_name}=({A},{B});\n"
+                point_definitions.append(point_def)
+                
+                # Add modified dot and label lines
+                processed_lines.append(f"dot({point_name});\n")
+                processed_lines.append(f'label("${X}$", {point_name}, NE);\n')
+                
+                i += 2  # Skip the next line since we've processed it
+                continue
+        
+        # For all other lines, keep them as is
+        processed_lines.append(lines[i])
+        i += 1
+    
+    # Combine everything: original lines up to line 3, point definitions, then processed lines
+    return lines[:3] + point_definitions + processed_lines[3:]
+
 def modify_file(input_filename, output_filename, decimal_precision=3):
     # Read the entire file
     with open(input_filename, 'r') as file:
@@ -100,14 +181,13 @@ def modify_file(input_filename, output_filename, decimal_precision=3):
         processed_lines.append(processed_line)
     lines = processed_lines
 
-    # Now process the dot lines after number truncation
-    lines = process_dot_lines(lines)
+    # Process point definitions and replacements
+    lines = process_point_definitions(lines)
 
     # Write the modified content to the output file
     with open(output_filename, 'w') as file:
         file.writelines(lines)
 
-# Rest of the helper functions remain the same
 def extract_pen_names(line):
     """Extract all 6-letter lowercase pen names from a pen definition line."""
     import re
@@ -123,46 +203,6 @@ def remove_pen_references(lines, pen_name):
         line = line.replace(pen_name, "")
         modified_lines.append(line)
     return modified_lines
-
-def extract_dot_coordinates(line):
-    """Extract coordinates from a dot line."""
-    import re
-    match = re.search(r'dot\(\(([-\d.]+),([-\d.]+)\)', line)
-    if match:
-        return f"({match.group(1)},{match.group(2)})"
-    return None
-
-def process_dot_lines(lines):
-    """Process dot lines according to the new rules."""
-    # First, collect all coordinates from dot lines
-    dot_coords = []
-    for line in lines:
-        if line.strip().startswith('dot('):
-            coords = extract_dot_coordinates(line)
-            if coords:
-                dot_coords.append(coords)
-
-    # Now process all lines
-    processed_lines = []
-    for line in lines:
-        line_strip = line.strip()
-        if line_strip.startswith('dot('):
-            # Remove ,dotstyle from the line
-            line = line.replace(',dotstyle', '')
-            coords = extract_dot_coordinates(line)
-            # Only add the line if its coordinates don't appear in any draw line
-            should_keep = True
-            if coords:
-                for draw_line in lines:
-                    if draw_line.strip().startswith('draw(') and coords in draw_line:
-                        should_keep = False
-                        break
-            if should_keep:
-                processed_lines.append(line)
-        else:
-            processed_lines.append(line)
-    
-    return processed_lines
 
 # Example usage
 input_file = "geogebra-export.txt"
