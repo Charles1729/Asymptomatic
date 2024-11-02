@@ -1,5 +1,5 @@
 # Asymptomatic
-A portmanteau of "automatic" and "asymptote".  We're all aware of the [Geogebra diagram to Asymptote conversion](https://www.geogebra.org/classic?lang=en) written by Azjps about a decade or so ago.  While this does its job well, I think anyone who's used this tool knows that quite a bit of effort has to go into making the diagram *usable*.
+A portmanteau of "automatic" and "asymptote".  We're all aware of the [Geogebra diagram to Asymptote conversion](https://www.geogebra.org/classic?lang=en) written by Azjps about a decade or so ago.  While this does its job well, I think anyone who's used this tool to make Olympiad geometry or math contest geometry diagrams knows that quite a bit of effort has to go into making the diagram *usable*.
 
 Asymptomatic is an attempt at automating this process!  This is currently a work in progress.  Suggest features!
 
