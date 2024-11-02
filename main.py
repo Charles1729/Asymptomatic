@@ -67,6 +67,9 @@ def process_point_definitions(lines):
     # Dictionary to keep track of point name occurrences
     point_names = {}
     
+    # Dictionary to map coordinates to point names
+    coord_to_point = {}
+    
     # Lists to store different types of lines
     header_lines = lines[:3]
     point_definitions = []
@@ -77,6 +80,32 @@ def process_point_definitions(lines):
     # Regular expressions for matching dot and label lines
     dot_pattern = r'dot\(\(([-\d.]+),([-\d.]+)\),dotstyle\);'
     label_pattern = r'label\("\$(.+?)\$", \(([-\d.]+),([-\d.]+)\), NE\);'
+    
+    # Function to replace coordinates with point name
+    def replace_coordinates(line):
+        # Use regex to find all coordinate pairs, including when they're part of drawing commands
+        coord_pattern = r'\(([-\d.]+),([-\d.]+)\)'
+        
+        # Work from end to start to avoid replacement issues
+        last_end = len(line)
+        result = line[:]
+        
+        # Find all matches and process them from right to left
+        matches = list(re.finditer(coord_pattern, line))
+        for match in reversed(matches):
+            coord_str = match.group(0)
+            if coord_str in coord_to_point:
+                # Get the portion of string immediately before this match
+                prefix = line[max(0, match.start()-3):match.start()]
+                
+                # Only replace if the coordinate isn't part of a larger number
+                if not prefix.strip().endswith('.'):
+                    # Replace with point name, maintaining the parentheses
+                    replacement = f"{coord_to_point[coord_str]}"
+                    start, end = match.span()
+                    result = result[:start] + replacement + result[end:]
+        
+        return result
     
     i = 3  # Start after header lines
     while i < len(lines):
@@ -90,6 +119,9 @@ def process_point_definitions(lines):
                 # Get coordinates and label text
                 A, B = dot_match.groups()
                 X = label_match.group(1)
+                
+                # Create coordinate string
+                coord_str = f"({A},{B})"
                 
                 # Fix any LaTeX command errors in X
                 X = fix_latex_commands(X)
@@ -106,8 +138,11 @@ def process_point_definitions(lines):
                     point_name = base_name
                 
                 # Create point definition with original coordinates
-                point_def = f"pair {point_name}=({A},{B});\n"
+                point_def = f"pair {point_name}={coord_str};\n"
                 point_definitions.append(point_def)
+                
+                # Store coordinate to point name mapping
+                coord_to_point[coord_str] = point_name
                 
                 # Add modified dot and label lines to their respective groups
                 dot_lines.append(f"dot({point_name});\n")
@@ -118,13 +153,17 @@ def process_point_definitions(lines):
         
         # For all other lines, check if they're dot or label lines
         if line.startswith('dot('):
-            dot_lines.append(lines[i])
+            processed_line = replace_coordinates(lines[i])
+            dot_lines.append(processed_line)
         elif line.startswith('label('):
-            # Fix any LaTeX commands in label lines
+            # Fix any LaTeX commands in label lines and replace coordinates
             fixed_line = fix_latex_commands(lines[i])
-            label_lines.append(fixed_line)
+            processed_line = replace_coordinates(fixed_line)
+            label_lines.append(processed_line)
         else:
-            other_lines.append(lines[i])
+            # Replace coordinates in other lines
+            processed_line = replace_coordinates(lines[i])
+            other_lines.append(processed_line)
         i += 1
     
     # Find the marker for dots and labels section
