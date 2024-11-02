@@ -4,7 +4,7 @@ A portmanteau of "automatic" and "asymptote".  We're all aware of the [Geogebra 
 Asymptomatic is an attempt at automating this process!
 
 # Usage
-1. Make a diagram at [Classic Geogebra](https://www.geogebra.org/classic?lang=en) and export it as an Asymptote .txt file.  This should save as "geogebra-export.txt" (if it saves as "geogebra-export.txt (n)", remove it).
+1. Make a diagram at [Classic Geogebra](https://www.geogebra.org/classic?lang=en) and export it as an Asymptote .txt file.  This should save as "geogebra-export.txt" (if it saves as "geogebra-export.txt (n)", remove it the "(n)", or dig through the main.py file below to change the file it opens manually).
 2. [Download Python 3](https://www.python.org/downloads/), if for whatever reason you still don't have it.
 3. Download main.py here.  Store it in some folder where you want to do your geogebra diagram converting.
 4. Move "geogebra-export.txt" from before into this folder.
