@@ -144,26 +144,20 @@ def process_point_definitions(lines):
                 # Store coordinate to point name mapping
                 coord_to_point[coord_str] = point_name
                 
-                # Add modified dot and label lines to their respective groups
-                dot_lines.append(f"dot({point_name});\n")
-                label_lines.append(f'label("${X}$", {point_name}, NE);\n')
+                # Add original dot and label lines to their respective groups
+                dot_lines.append(lines[i])
+                label_lines.append(lines[i + 1])
                 
                 i += 2  # Skip the next line since we've processed it
                 continue
         
-        # For all other lines, check if they're dot or label lines
+        # For all other lines, store them as is
         if line.startswith('dot('):
-            processed_line = replace_coordinates(lines[i])
-            dot_lines.append(processed_line)
+            dot_lines.append(lines[i])
         elif line.startswith('label('):
-            # Fix any LaTeX commands in label lines and replace coordinates
-            fixed_line = fix_latex_commands(lines[i])
-            processed_line = replace_coordinates(fixed_line)
-            label_lines.append(processed_line)
+            label_lines.append(lines[i])
         else:
-            # Replace coordinates in other lines
-            processed_line = replace_coordinates(lines[i])
-            other_lines.append(processed_line)
+            other_lines.append(lines[i])
         i += 1
     
     # Find the marker for dots and labels section
@@ -173,7 +167,7 @@ def process_point_definitions(lines):
             marker_index = i
             break
     
-    # Construct final output
+    # Construct final output without replacements first
     final_lines = []
     final_lines.extend(header_lines)  # Add header lines
     final_lines.extend(point_definitions)  # Add point definitions
@@ -185,7 +179,7 @@ def process_point_definitions(lines):
         final_lines.append(other_lines[marker_index])
         # Add grouped dot and label lines
         final_lines.extend(dot_lines)
-        final_lines.append('\n')  # Add spacing between groups
+        final_lines.append('\n')  # Single blank line between groups
         final_lines.extend(label_lines)
         # Add remaining lines
         final_lines.extend(other_lines[marker_index + 1:])
@@ -193,10 +187,17 @@ def process_point_definitions(lines):
         # If no marker found, just add everything in order
         final_lines.extend(other_lines)
         final_lines.extend(dot_lines)
-        final_lines.append('\n')
+        final_lines.append('\n')  # Single blank line between groups
         final_lines.extend(label_lines)
     
-    return final_lines
+    # Now perform coordinate replacements on all lines except point definitions
+    processed_lines = []
+    for line in final_lines:
+        if not line.strip().startswith('pair '):
+            line = replace_coordinates(line)
+        processed_lines.append(line)
+    
+    return processed_lines
 
 def modify_file(input_filename, output_filename, decimal_precision=3):
     """Main function to modify the file."""
