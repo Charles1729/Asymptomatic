@@ -1,7 +1,7 @@
 # Asymptomatic
 A portmanteau of "automatic" and "asymptote".  We're all aware of the [Geogebra diagram to Asymptote conversion](https://www.geogebra.org/classic?lang=en) written by Azjps about a decade or so ago.  While this does its job well, I think anyone who's used this tool knows that quite a bit of effort has to go into making the diagram *usable*.
 
-Asymptomatic is an attempt at automating this process!
+Asymptomatic is an attempt at automating this process!  This is currently a work in progress.  Suggest features!
 
 # Usage
 1. Make a diagram at [Classic Geogebra](https://www.geogebra.org/classic?lang=en) and export it as an Asymptote .txt file.  This should save as "geogebra-export.txt" (if it saves as "geogebra-export-n.txt" or "geogebra-export(n).txt, rename it "geogebra-export.txt", or dig through the main.py file below to change the file it opens manually (not advised, but it's at the bottom of the file in "input_file", if you really want to do it)).
