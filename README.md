@@ -14,7 +14,7 @@ Asymptomatic is an attempt at automating this process!  This is currently a work
 8. Enjoy!
 
 # Oh no!  The exported file has an error/weird behavior/something wrong with it!
-~~Deal with it~~ Shoot me a quick email at charleszhang1729@gmail.com with the following:
+~~Deal with it~~ Shoot me a quick email at charleszhang1729@gmail.com or DM me on Discord @contabulator (preferred) with the following:
 - What file you fed into the program and what it spat out;
 - Which lines you think are problematic in the output file;
 - What you expected those lines to look like;
