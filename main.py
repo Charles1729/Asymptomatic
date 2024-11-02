@@ -30,7 +30,7 @@ def truncate_all_numbers(line, decimal_precision):
 def fix_latex_commands(line):
     """Fix common LaTeX command errors."""
     latex_fixes = {
-        '\\\\': '\\',
+        '\\\\': '\\',  # Double backslash to single backslash
         # Add more LaTeX fixes here if needed
     }
     for old, new in latex_fixes.items():
@@ -78,7 +78,7 @@ def process_point_definitions(lines):
     other_lines = []
     
     # Regular expressions for matching dot and label lines
-    dot_pattern = r'dot\(\(([-\d.]+),([-\d.]+)\),dotstyle\);'
+    dot_pattern = r'dot\(\(([-\d.]+),([-\d.]+)\)(?:,dotstyle)?\);'  # Made dotstyle optional
     label_pattern = r'label\("\$(.+?)\$", \(([-\d.]+),([-\d.]+)\), NE\);'
     
     # Function to replace coordinates with point name
@@ -100,9 +100,12 @@ def process_point_definitions(lines):
                 
                 # Only replace if the coordinate isn't part of a larger number
                 if not prefix.strip().endswith('.'):
-                    # Replace with point name, maintaining the parentheses
-                    replacement = f"{coord_to_point[coord_str]}"
+                    # Replace with just the point name (no extra parentheses)
+                    replacement = coord_to_point[coord_str]
                     start, end = match.span()
+                    # If this is part of a dot() or label() command, keep the parentheses
+                    if line[max(0, start-4):start].rstrip().endswith('('):
+                        replacement = f"{replacement}"
                     result = result[:start] + replacement + result[end:]
         
         return result
@@ -113,11 +116,12 @@ def process_point_definitions(lines):
         
         if i < len(lines) - 1:
             dot_match = re.match(dot_pattern, line)
-            label_match = re.match(label_pattern, lines[i + 1].strip())
+            next_line = lines[i + 1].strip()
+            label_match = re.match(label_pattern, next_line)
             
             if dot_match and label_match:
                 # Get coordinates and label text
-                A, B = dot_match.groups()
+                A, B = dot_match.groups()[:2]  # Only take first two groups since dotstyle is optional
                 X = label_match.group(1)
                 
                 # Create coordinate string
@@ -144,20 +148,26 @@ def process_point_definitions(lines):
                 # Store coordinate to point name mapping
                 coord_to_point[coord_str] = point_name
                 
-                # Add original dot and label lines to their respective groups
-                dot_lines.append(lines[i])
-                label_lines.append(lines[i + 1])
+                # Add dot line without dotstyle and modified label line
+                dot_lines.append(f"dot({coord_str});\n")  # Remove dotstyle
+                label_lines.append(f'label("${point_name}$", {coord_str}, NE);\n')  # Use point name in label
                 
                 i += 2  # Skip the next line since we've processed it
                 continue
         
-        # For all other lines, store them as is
+        # For all other lines, store them as is (with LaTeX fixes for labels)
         if line.startswith('dot('):
-            dot_lines.append(lines[i])
+            # Remove dotstyle from any remaining dot lines
+            line = re.sub(r',dotstyle', '', line)
+            dot_lines.append(line + '\n')
         elif line.startswith('label('):
-            label_lines.append(lines[i])
+            label_lines.append(fix_latex_commands(line) + '\n')
         else:
-            other_lines.append(lines[i])
+            # Fix LaTeX commands in any line that contains a dollar sign (LaTeX math mode)
+            if '$' in line:
+                other_lines.append(fix_latex_commands(line) + '\n')
+            else:
+                other_lines.append(line + '\n')
         i += 1
     
     # Find the marker for dots and labels section
