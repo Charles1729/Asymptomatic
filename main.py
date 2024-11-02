@@ -41,9 +41,12 @@ def process_point_name(X):
     """Process point name according to the specified rules."""
     import re
     
+    # Store original name before processing
+    original_name = X
+    
     # Remove specific characters and apply rules in order
     if X.isalnum():
-        return X
+        return X, X
     
     # Remove underscores
     X = X.replace('_', '')
@@ -55,10 +58,10 @@ def process_point_name(X):
     if "'" in X:
         X = X.replace("'", '') + 'p'
     
-    # Remove any remaining non-alphanumeric characters
+    # Remove any remaining non-alphanumeric characters for the programmatic name
     X = re.sub(r'[^a-zA-Z0-9]', '', X)
     
-    return X
+    return X, original_name
 
 def process_point_definitions(lines):
     """Process dot/label pairs and create point definitions."""
@@ -67,8 +70,9 @@ def process_point_definitions(lines):
     # Dictionary to keep track of point name occurrences
     point_names = {}
     
-    # Dictionary to map coordinates to point names
+    # Dictionary to map coordinates to point names (both programmatic and display versions)
     coord_to_point = {}
+    coord_to_display_name = {}
     
     # Lists to store different types of lines
     header_lines = lines[:3]
@@ -78,36 +82,25 @@ def process_point_definitions(lines):
     other_lines = []
     
     # Regular expressions for matching dot and label lines
-    dot_pattern = r'dot\(\(([-\d.]+),([-\d.]+)\)(?:,dotstyle)?\);'  # Made dotstyle optional
+    dot_pattern = r'dot\(\(([-\d.]+),([-\d.]+)\)(?:,dotstyle)?\);'
     label_pattern = r'label\("\$(.+?)\$", \(([-\d.]+),([-\d.]+)\), NE\);'
     
     # Function to replace coordinates with point name
     def replace_coordinates(line):
-        # Use regex to find all coordinate pairs, including when they're part of drawing commands
         coord_pattern = r'\(([-\d.]+),([-\d.]+)\)'
-        
-        # Work from end to start to avoid replacement issues
-        last_end = len(line)
         result = line[:]
         
-        # Find all matches and process them from right to left
         matches = list(re.finditer(coord_pattern, line))
         for match in reversed(matches):
             coord_str = match.group(0)
             if coord_str in coord_to_point:
-                # Get the portion of string immediately before this match
                 prefix = line[max(0, match.start()-3):match.start()]
-                
-                # Only replace if the coordinate isn't part of a larger number
                 if not prefix.strip().endswith('.'):
-                    # Replace with just the point name (no extra parentheses)
                     replacement = coord_to_point[coord_str]
                     start, end = match.span()
-                    # If this is part of a dot() or label() command, keep the parentheses
                     if line[max(0, start-4):start].rstrip().endswith('('):
                         replacement = f"{replacement}"
                     result = result[:start] + replacement + result[end:]
-        
         return result
     
     i = 3  # Start after header lines
@@ -121,7 +114,7 @@ def process_point_definitions(lines):
             
             if dot_match and label_match:
                 # Get coordinates and label text
-                A, B = dot_match.groups()[:2]  # Only take first two groups since dotstyle is optional
+                A, B = dot_match.groups()[:2]
                 X = label_match.group(1)
                 
                 # Create coordinate string
@@ -130,40 +123,40 @@ def process_point_definitions(lines):
                 # Fix any LaTeX command errors in X
                 X = fix_latex_commands(X)
                 
-                # Process the point name
-                base_name = process_point_name(X)
+                # Process the point name - now getting both programmatic and display versions
+                prog_name, display_name = process_point_name(X)
                 
                 # Handle duplicate names
-                if base_name in point_names:
-                    point_names[base_name] += 1
-                    point_name = f"{base_name}{point_names[base_name]}"
+                if prog_name in point_names:
+                    point_names[prog_name] += 1
+                    prog_name = f"{prog_name}{point_names[prog_name]}"
+                    display_name = f"{display_name}{point_names[prog_name]}"
                 else:
-                    point_names[base_name] = 1
-                    point_name = base_name
+                    point_names[prog_name] = 1
                 
                 # Create point definition with original coordinates
-                point_def = f"pair {point_name}={coord_str};\n"
+                point_def = f"pair {prog_name}={coord_str};\n"
                 point_definitions.append(point_def)
                 
-                # Store coordinate to point name mapping
-                coord_to_point[coord_str] = point_name
+                # Store both programmatic and display names
+                coord_to_point[coord_str] = prog_name
+                coord_to_display_name[coord_str] = display_name
                 
                 # Add dot line without dotstyle and modified label line
-                dot_lines.append(f"dot({coord_str});\n")  # Remove dotstyle
-                label_lines.append(f'label("${point_name}$", {coord_str}, NE);\n')  # Use point name in label
+                dot_lines.append(f"dot({coord_str});\n")
+                # Use the display name in the label
+                label_lines.append(f'label("${display_name}$", {coord_str}, NE);\n')
                 
-                i += 2  # Skip the next line since we've processed it
+                i += 2
                 continue
         
-        # For all other lines, store them as is (with LaTeX fixes for labels)
+        # For all other lines
         if line.startswith('dot('):
-            # Remove dotstyle from any remaining dot lines
             line = re.sub(r',dotstyle', '', line)
             dot_lines.append(line + '\n')
         elif line.startswith('label('):
             label_lines.append(fix_latex_commands(line) + '\n')
         else:
-            # Fix LaTeX commands in any line that contains a dollar sign (LaTeX math mode)
             if '$' in line:
                 other_lines.append(fix_latex_commands(line) + '\n')
             else:
@@ -177,27 +170,22 @@ def process_point_definitions(lines):
             marker_index = i
             break
     
-    # Construct final output without replacements first
+    # Construct final output
     final_lines = []
-    final_lines.extend(header_lines)  # Add header lines
-    final_lines.extend(point_definitions)  # Add point definitions
+    final_lines.extend(header_lines)
+    final_lines.extend(point_definitions)
     
     if marker_index != -1:
-        # Add lines up to marker
         final_lines.extend(other_lines[:marker_index])
-        # Add marker line
         final_lines.append(other_lines[marker_index])
-        # Add grouped dot and label lines
         final_lines.extend(dot_lines)
-        final_lines.append('\n')  # Single blank line between groups
+        final_lines.append('\n')
         final_lines.extend(label_lines)
-        # Add remaining lines
         final_lines.extend(other_lines[marker_index + 1:])
     else:
-        # If no marker found, just add everything in order
         final_lines.extend(other_lines)
         final_lines.extend(dot_lines)
-        final_lines.append('\n')  # Single blank line between groups
+        final_lines.append('\n')
         final_lines.extend(label_lines)
     
     # Now perform coordinate replacements on all lines except point definitions
