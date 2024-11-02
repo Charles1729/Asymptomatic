@@ -13,11 +13,11 @@ Asymptomatic is an attempt at automating this process!  This is currently a work
 7. Open the new file.  The first line should say something about "size(0cm);".  Adjust this according to how big you want the diagram to be.
 8. Enjoy!
 
-# Oh no!  The exported file has an error/weird behavior/something wrong with it!
+# Oh no!  There's something weird/wrong/error with my exported file!
 ~~Deal with it~~ Shoot me a quick email at charleszhang1729 (at) gmail (dot) com or DM me on Discord (at) contabulator (preferred) with the following:
 - What file you fed into the program and what it spat out;
 - Which lines you think are problematic in the output file;
-- What you expected those lines to look like;
+- What you expected those lines to look like (if this is for an Asymptote error, you can ignore this);
 
 and I *might* get back to you or change this.
 
