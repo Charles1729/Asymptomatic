@@ -22,7 +22,7 @@ See demo.txt above for some idea of what the product of this program does specif
 - Which lines you think are problematic in the output file;
 - What you expected those lines to look like (if this is for an Asymptote error, you can ignore this);
 
-and I *might* get back to you or change this.
+and I *might* get back to you or fix this.
 
 Otherwise, if you are one of the magical wizards who [knows how to use pull requests](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request), then do that.
 
