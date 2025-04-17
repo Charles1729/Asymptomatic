@@ -1,0 +1,61 @@
+/* Geogebra to Asymptote conversion, documentation at artofproblemsolving.com/Wiki go to User:Azjps/geogebra */ 
+/* Asymptomatic by Charles Zhang, documentation at https://github.com/Charles1729/Asymptomatic/ */
+import graph; size(0cm); 
+real xmin = -5.799, xmax = 17.556, ymin = -7.771, ymax = 8.546;  /* image dimensions */
+
+/* Point Definitions */
+pair A=(2.170,7.658);
+pair B=(0,0);
+pair C=(12.736,0.068);
+pair I=(3.827,2.910);
+pair D=(3.843,0.020);
+pair Ib=(1.984,1.508);
+pair Eb=(1.864,-2.452);
+pair Ic=(5.682,2.318);
+pair Ec=(10.916,-5.638);
+
+/* Drawings */
+draw(A--B); 
+draw(B--C); 
+draw(C--A); 
+draw(circle(I, 2.889)); 
+draw(A--D); 
+draw(Ib--Ic); 
+draw(Eb--Ec); 
+draw(Ib--Eb); 
+draw(Ic--Ec); 
+draw(Ec--C); 
+draw(Ec--A); 
+draw(Ec--Ib); 
+draw(Eb--Ic); 
+draw(B--Eb); 
+draw(B--I); 
+draw(C--I); 
+draw(Eb--A); 
+draw(A--Ec); 
+draw(Eb--Ib); 
+draw(Ib--Eb); 
+draw(circle((1.924,-0.471), 1.981)); 
+draw(circle((8.299,-1.659), 4.762)); 
+
+/* Labels */
+label("$A$", A, NE); 
+label("$B$", B, NE); 
+label("$C$", C, NE); 
+label("$I$", I, NE); 
+label("$D$", D, NE); 
+label("$I_{B}$", Ib, NE); 
+label("$E_{B}$", Eb, NE); 
+label("$I_{C}$", Ic, NE); 
+label("$E_{C}$", Ec, NE); 
+
+/* Dots */
+dot(A);
+dot(B);
+dot(C);
+dot(I);
+dot(D);
+dot(Ib);
+dot(Eb);
+dot(Ic);
+dot(Ec);
