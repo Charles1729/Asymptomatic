@@ -146,7 +146,7 @@ def process_file(input_file, output_file=None):
     
     # Construct the new content structure
     # First line
-    structured_content = ["/* something something */"]
+    structured_content = ["/* Geogebra to Asymptote conversion, documentation at artofproblemsolving.com/Wiki go to User:Azjps/geogebra */ \n/* Asymptomatic by Charles Zhang, documentation at https://github.com/Charles1729/Asymptomatic/ */"]
     
     # Add import and size
     for line in processed_lines:
