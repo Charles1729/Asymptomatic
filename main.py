@@ -42,7 +42,7 @@ def process_file(input_file, output_file=None):
     with open(input_file, 'r') as f:
         content = f.read()
     
-    # Step 1: Truncate decimal places
+    # Truncate decimal places
     decimal_pattern = r'-?\d+\.\d+'
     content = re.sub(decimal_pattern, truncate_decimal, content)
     
@@ -68,7 +68,7 @@ def process_file(input_file, output_file=None):
         elif line.strip().startswith('real xmin'):
             xmin_line = line
     
-    # Step 2: Remove lines between labelscalefactor and draw figures, except xmin line
+    # Remove lines between labelscalefactor and draw figures, except xmin line
     if start_index is not None and end_index is not None:
         new_lines = lines[:start_index]
         if xmin_line:
@@ -77,7 +77,7 @@ def process_file(input_file, output_file=None):
         lines = new_lines
         content = '\n'.join(lines)
     
-    # Step 3: Process pen references
+    # Process pen references
     for pen in pen_names:
         # Remove " + pen" occurrences
         content = re.sub(r' \+ ' + re.escape(pen), '', content)
@@ -86,7 +86,7 @@ def process_file(input_file, output_file=None):
         # Remove standalone "pen" occurrences (as a whole word)
         content = re.sub(r'\b' + re.escape(pen) + r'\b', '', content)
     
-    # Step 4: Miscellaneous deletions
+    # Miscellaneous deletions
     # Replace all ", linewidth(X)" where X is any number
     content = re.sub(r', linewidth\(\d+(?:\.\d+)?(pt)?\)', '', content)
     content = re.sub(r' \* labelscalefactor', '', content)
@@ -95,7 +95,7 @@ def process_file(input_file, output_file=None):
     # Remove all "label("$x" lines where x is a lowercase letter
     content = re.sub(r'label\("\$[a-z].*$\n', '', content, flags=re.MULTILINE)
     
-    # Step 5: Process dot and label pairs using a more flexible approach
+    # Process dot and label pairs using a more flexible approach
     lines = content.split('\n')
     processed_lines = []
     pairs = []
@@ -192,6 +192,25 @@ def process_file(input_file, output_file=None):
     
     # Remove ,dotstyle
     new_content = new_content.replace(",dotstyle", "")
+        
+    # Add Dots header and dot commands for all defined points
+    structured_content.append("\n/* Dots */")
+    dot_commands = []
+    for name, _, _ in pairs:
+        dot_commands.append(f"dot({name});")
+    structured_content.extend(dot_commands)
+
+    # Rebuild the content with the new dot section
+    new_content = '\n'.join(structured_content)
+    
+    # Replace all coordinate pairs with their corresponding point label
+    # Slight spaghetti
+    for name, x, y in pairs:
+        while f"({x})" in new_content:
+            new_content = new_content.replace(f"({x})", f"{name}")
+        while f"({y})" in new_content:
+            new_content = new_content.replace(f"({y})", f"{name}")
+        new_content = new_content.replace(f"{name}={name}",f"{name}=({y})")
     
     # Write the result to the output file
     if output_file:
