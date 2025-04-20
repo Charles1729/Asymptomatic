@@ -2,23 +2,17 @@ import re
 import sys
 from decimal import Decimal, ROUND_DOWN
 
-def truncate_decimal(match):
-    """Truncate decimal places to the specified precision."""
-    num = match.group(0)
-    if '.' not in num:
-        return num
+def truncate_to_precision(value, precision=3):
+    """Truncate a numeric value to specified precision."""
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except ValueError:
+            return value
     
-    # Handle negative numbers
-    sign = ''
-    if num.startswith('-'):
-        sign = '-'
-        num = num[1:]
-    
-    parts = num.split('.')
-    if len(parts[1]) <= decimal_precision:
-        return sign + num
-    
-    return sign + parts[0] + '.' + parts[1][:decimal_precision]
+    # Format with specified precision, removing trailing zeros
+    formatted = f"{value:.{precision}f}".rstrip('0').rstrip('.')
+    return formatted
 
 def format_point_name(name):
     """Format point names according to specified rules."""
@@ -42,9 +36,12 @@ def process_file(input_file, output_file=None):
     with open(input_file, 'r') as f:
         content = f.read()
     
-    # Truncate decimal places
+    # Process decimal numbers
+    def truncate_decimal_match(match):
+        return truncate_to_precision(match.group(0), decimal_precision)
+    
     decimal_pattern = r'-?\d+\.\d+'
-    content = re.sub(decimal_pattern, truncate_decimal, content)
+    content = re.sub(decimal_pattern, truncate_decimal_match, content)
     
     # Find the pen definitions before deleting any lines
     lines = content.split('\n')
@@ -65,9 +62,14 @@ def process_file(input_file, output_file=None):
             start_index = i
         elif line.strip().startswith('/* draw figures */'):
             end_index = i
-        elif line.strip().startswith('real xmin'):
-            xmin_line = line
-    
+        if 'real xmin' in line:
+            xmin_line = line[line.index('real xmin'):]
+            # Truncate decimal values in xmin line
+            xmin_values = re.findall(decimal_pattern, xmin_line)
+            for value in xmin_values:
+                truncated = truncate_to_precision(value, decimal_precision)
+                xmin_line = xmin_line.replace(value, truncated)
+
     # Remove lines between labelscalefactor and draw figures, except xmin line
     if start_index is not None and end_index is not None:
         new_lines = lines[:start_index]
@@ -87,132 +89,174 @@ def process_file(input_file, output_file=None):
         content = re.sub(r'\b' + re.escape(pen) + r'\b', '', content)
     
     # Miscellaneous deletions
-    # Replace all ", linewidth(X)" where X is any number
     content = re.sub(r', linewidth\(\d+(?:\.\d+)?(pt)?\)', '', content)
     content = re.sub(r' \* labelscalefactor', '', content)
-    # Remove the line with dots and labels
     content = re.sub(r'^\s*\/\* dots and labels \*\/\s*$', '', content, flags=re.MULTILINE)
-    # Remove all "label("$x" lines where x is a lowercase letter
     content = re.sub(r'label\("\$[a-z].*$\n', '', content, flags=re.MULTILINE)
     
-    # Process dot and label pairs using a more flexible approach
+    # Extract drawing coordinates and process labels
     lines = content.split('\n')
-    processed_lines = []
+    all_drawing_coords = []
+    
+    # First gather all coordinates
+    coord_pattern = r'\((-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)'
+    for line in lines:
+        if line.strip().startswith('draw('):
+            coords_matches = re.findall(coord_pattern, line)
+            for x_str, y_str in coords_matches:
+                x = truncate_to_precision(x_str, decimal_precision)
+                y = truncate_to_precision(y_str, decimal_precision)
+                all_drawing_coords.append((x, y))
+    
+    # Remove duplicates
+    all_drawing_coords = list(set(all_drawing_coords))
+    
+    # Extract all labels
+    label_info = []
+    for line in lines:
+        if line.strip().startswith('label("$'):
+            label_match = re.search(r'label\("\$([A-Z][^$]*)\$", \(([^,]+),([^)]+)\)', line)
+            if label_match:
+                label_name = label_match.group(1)
+                label_x = truncate_to_precision(label_match.group(2), decimal_precision)
+                label_y = truncate_to_precision(label_match.group(3), decimal_precision)
+                label_info.append((label_name, label_x, label_y))
+    
+    # Associate labels with points
     pairs = []
     preserved_labels = []
+    used_coords = set()
     
-    i = 0
-    while i < len(lines):
-        # Try to match a label line followed by a dot line
-        label_match = None
-        dot_match = None
-        label_line = None
-        
-        # Check if current line is a label line
-        if i < len(lines) and lines[i].strip().startswith('label("$'):
-            label_match = re.search(r'label\("\$([^$]+)\$", \(([^)]+)\)', lines[i])
-            label_line = lines[i]
-        
-        # Check if next line is a dot line
-        if i+1 < len(lines) and lines[i+1].strip().startswith('dot('):
-            dot_match = re.search(r'dot\(\(([^)]+)\)', lines[i+1])
-        
-        # Also check in reverse order: dot line followed by label line
-        if not (label_match and dot_match):
-            if i < len(lines) and lines[i].strip().startswith('dot('):
-                dot_match = re.search(r'dot\(\(([^)]+)\)', lines[i])
-                
-            if i+1 < len(lines) and lines[i+1].strip().startswith('label("$'):
-                label_match = re.search(r'label\("\$([^$]+)\$", \(([^)]+)\)', lines[i+1])
-                label_line = lines[i+1]
-        
-        if label_match and dot_match:
-            label_name = label_match.group(1)
-            label_coords = label_match.group(2)
-            dot_coords = dot_match.group(1)
+    for label_name, label_x, label_y in label_info:
+        # Calculate distance to all drawing coordinates
+        distances = []
+        for coord_x, coord_y in all_drawing_coords:
+            if (coord_x, coord_y) in used_coords:
+                continue
             
-            # Format point name according to rules
-            formatted_name = format_point_name(label_name)
+            # Calculate Euclidean distance
+            try:
+                distance = ((float(label_x) - float(coord_x)) ** 2 + (float(label_y) - float(coord_y)) ** 2) ** 0.5
+                distances.append((distance, (coord_x, coord_y)))
+            except ValueError:
+                continue
+        
+        # If valid coordinates found, use the closest one
+        if distances:
+            distances.sort()
+            closest_distance, (closest_x, closest_y) = distances[0]
             
-            # Add to pairs and preserve the label
-            pairs.append((formatted_name, label_coords, dot_coords))
-            if label_line:
-                preserved_labels.append(label_line)
-            # Skip these two lines
-            i += 2
+            # Use points that are reasonably close
+            if closest_distance < 15.0:
+                formatted_name = format_point_name(label_name)
+                pairs.append((formatted_name, label_x, label_y, closest_x, closest_y))
+                preserved_labels.append(f'label("${label_name}$", {formatted_name}, NE);')
+                used_coords.add((closest_x, closest_y))
+            else:
+                # Fall back to offset method
+                formatted_name = format_point_name(label_name)
+                offset_x = truncate_to_precision(float(label_x) - 0.08, decimal_precision)
+                offset_y = truncate_to_precision(float(label_y) - 0.2, decimal_precision)
+                pairs.append((formatted_name, label_x, label_y, offset_x, offset_y))
+                preserved_labels.append(f'label("${label_name}$", {formatted_name}, NE);')
         else:
-            processed_lines.append(lines[i])
-            i += 1
+            # Fall back to offset method
+            formatted_name = format_point_name(label_name)
+            offset_x = truncate_to_precision(float(label_x) - 0.08, decimal_precision)
+            offset_y = truncate_to_precision(float(label_y) - 0.2, decimal_precision)
+            pairs.append((formatted_name, label_x, label_y, offset_x, offset_y))
+            preserved_labels.append(f'label("${label_name}$", {formatted_name}, NE);')
     
-    # Construct the new content structure
-    # First line
-    structured_content = ["/* Geogebra to Asymptote conversion, documentation at artofproblemsolving.com/Wiki go to User:Azjps/geogebra */ \n/* Asymptomatic by Charles Zhang, documentation at https://github.com/Charles1729/Asymptomatic/ */"]
+    # Create a lookup dictionary for point names
+    point_lookup = {}
+    for name, _, _, x, y in pairs:
+        coord_key = f"({x},{y})"
+        point_lookup[coord_key] = name
     
-    # Add import and size
-    for line in processed_lines:
+    # Extract draw commands
+    draw_commands = []
+    for line in lines:
+        if line.strip().startswith('draw('):
+            draw_commands.append(line)
+    
+    # Build the output content
+    structured_content = [
+        "/* Geogebra to Asymptote conversion, documentation at artofproblemsolving.com/Wiki go to User:Azjps/geogebra */", 
+        "/* Asymptomatic by Charles Zhang, documentation at https://github.com/Charles1729/Asymptomatic/ */"
+    ]
+    
+    # Add import statement
+    for line in lines:
         if line.strip().startswith('import graph'):
-            structured_content.append(line)
+            size_match = re.search(r'size\(([^)]+)\)', line)
+            if size_match:
+                size_value = truncate_to_precision(size_match.group(1).replace('cm', ''), decimal_precision)
+                structured_content.append(f"import graph; size({size_value}cm);")
+            else:
+                structured_content.append(line)
             break
     
     # Add xmin line
-    for line in processed_lines:
-        if line.strip().startswith('real xmin'):
-            structured_content.append(line)
-            break
+    if xmin_line:
+        structured_content.append(xmin_line)
     
-    # Add Point Definitions header and point definitions
+    # Add Point Definitions
     structured_content.append("\n/* Point Definitions */")
     point_definitions = []
-    for name, label_coords, dot_coords in pairs:
-        point_definitions.append(f"pair {name}=({dot_coords});")
+    seen_points = set()
+    
+    for name, _, _, x, y in pairs:
+        if name not in seen_points:
+            point_definitions.append(f"pair {name}=({x},{y});")
+            seen_points.add(name)
+    
     structured_content.extend(point_definitions)
     
-    # Add Drawings header and drawing commands
+    # Add Drawings
     structured_content.append("\n/* Drawings */")
-    draw_lines = [line for line in processed_lines if line.strip().startswith('draw')]
-    structured_content.extend(draw_lines)
+    processed_draws = []
     
-    # Add Labels header and preserved labels
+    for line in draw_commands:
+        new_line = line
+        # Replace coordinates with point names
+        for (name, _, _, x, y) in pairs:
+            coord = f"({x},{y})"
+            if coord in new_line:
+                new_line = new_line.replace(coord, name)
+        processed_draws.append(new_line)
+    
+    structured_content.extend(processed_draws)
+    
+    # Add Labels
     structured_content.append("\n/* Labels */")
     structured_content.extend(preserved_labels)
     
-    # Replace all coordinates with point names in draw commands and labels
-    new_content = '\n'.join(structured_content)
-    
-    for name, label_coords, dot_coords in pairs:
-        # Replace coordinates in the drawing and label sections
-        for section_start in ["/* Drawings */", "/* Labels */"]:
-            section_start_idx = new_content.find(section_start)
-            if section_start_idx >= 0:
-                before = new_content[:section_start_idx]
-                after = new_content[section_start_idx:]
-                after = after.replace(f"({dot_coords})", f"{name}")
-                after = after.replace(f"({label_coords})", f"{name}")
-                new_content = before + after
-    
-    # Remove ,dotstyle
-    new_content = new_content.replace(",dotstyle", "")
-        
-    # Add Dots header and dot commands for all defined points
+    # Add Dots
     structured_content.append("\n/* Dots */")
     dot_commands = []
-    for name, _, _ in pairs:
-        dot_commands.append(f"dot({name});")
+    seen_dots = set()
+    
+    for name, _, _, _, _ in pairs:
+        if name not in seen_dots:
+            dot_commands.append(f"dot({name});")
+            seen_dots.add(name)
+    
     structured_content.extend(dot_commands)
-
-    # Rebuild the content with the new dot section
+    
+    # Join all lines
     new_content = '\n'.join(structured_content)
     
-    # Replace all coordinate pairs with their corresponding point label
-    # Slight spaghetti
-    for name, x, y in pairs:
-        while f"({x})" in new_content:
-            new_content = new_content.replace(f"({x})", f"{name}")
-        while f"({y})" in new_content:
-            new_content = new_content.replace(f"({y})", f"{name}")
-        new_content = new_content.replace(f"{name}={name}",f"{name}=({y})")
+    # Replace any remaining coordinates with point names
+    for name, _, _, x, y in pairs:
+        coord = f"({x},{y})"
+        if coord in new_content:
+            new_content = new_content.replace(coord, name)
+        new_content = new_content.replace(f"{name}={name}",f"{name}={coord}")
     
-    # Write the result to the output file
+    # Clean up any remaining formatting issues
+    new_content = new_content.replace(",dotstyle", "")
+    
+    # Write the result
     if output_file:
         with open(output_file, 'w') as f:
             f.write(new_content)
@@ -225,7 +269,7 @@ if __name__ == "__main__":
     decimal_precision = 3  # Default decimal precision
     
     if len(sys.argv) < 2:
-        print("Usage: python asymptote.py input_file [output_file] [decimal_precision]")
+        print("Usage: python remake.py input_file [output_file] [decimal_precision]")
         sys.exit(1)
     
     input_file = sys.argv[1]
